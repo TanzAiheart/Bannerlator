@@ -29,6 +29,11 @@ on:
         description: 'Label for APK file names'
         required: true
         type: string
+      ch3xp_source_ref:
+        description: 'Pin the Bannerlator V2 sources for the private CH3XP build'
+        required: false
+        default: ''
+        type: string
     secrets:
       # Samsung Galaxy Performance SDK jar (base64), optional. Supplied only by callers that
       # opt in (test builds). When absent the build proceeds without it and the Galaxy
@@ -38,6 +43,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -48,16 +54,13 @@ env:
 jobs:
   build:
 
+    if: inputs.ch3xp_source_ref == '' || github.repository == 'TanzAiheart/Chivalrous-Heroes-XP'
     runs-on: ubuntu-22.04
 
     strategy:
       fail-fast: false          # one flavor failing must NOT cancel the others
       matrix:
-        flavor:
-          - { id: standard, task: assembleStandardRelease }
-          - { id: ludashi,  task: assembleLudashiRelease  }
-          - { id: pubg,     task: assemblePubgRelease     }
-          - { id: antutu,   task: assembleAntutuRelease   }
+        flavor: ${{ fromJSON(inputs.ch3xp_source_ref != '' && '[{"id":"standard","task":"assembleStandardRelease"}]' || '[{"id":"standard","task":"assembleStandardRelease"},{"id":"ludashi","task":"assembleLudashiRelease"},{"id":"pubg","task":"assemblePubgRelease"},{"id":"antutu","task":"assembleAntutuRelease"}]') }}
 
     name: build (${{ matrix.flavor.id }})
 
@@ -65,6 +68,8 @@ jobs:
     - name: Clone repository
       uses: actions/checkout@v4
       with:
+        repository: ${{ inputs.ch3xp_source_ref != '' && 'TanzAiheart/Bannerlator' || github.repository }}
+        ref: ${{ inputs.ch3xp_source_ref || github.sha }}
         submodules: recursive
         fetch-depth: 1          # was 20 — the version step only needs HEAD
 
@@ -738,6 +743,10 @@ jobs:
           echo "No Galaxy SDK secret set — building without it (Galaxy feature dormant)."
         fi
 
+    - name: Configure the standalone CH3XP launcher
+      if: inputs.ch3xp_source_ref != ''
+      run: python3 ci/configure-ch3xp.py
+
     - name: Build with Gradle
       # ONE flavor per job → only one ~588MB APK packages here, so the old
       # `--no-parallel --max-workers=1` OOM-guard is dropped; full workers now.
@@ -782,7 +791,44 @@ jobs:
         mv app/build/outputs/apk/${F}/release/app-${F}-release.apk \
            app/build/outputs/apk/${F}/release/Bannerlator-${N}-${F}.apk
 
+    - name: Fetch the pinned Vanilla EXE and SDL3
+      if: inputs.ch3xp_source_ref != ''
+      uses: actions/checkout@v4
+      with:
+        repository: TanzAiheart/Chivalrous-Heroes-XP
+        ref: 7aaa574195ae611ce4e7f8a248fbbcff29ad4470
+        path: _ch3xp-vanilla
+        sparse-checkout: Win7 v1.6 SDL3 controller
+        persist-credentials: false
+
+    - name: Download the verified Vanilla game ZIP
+      if: inputs.ch3xp_source_ref != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: CH3XP-vanilla-bee4d1f24fc6
+        run-id: '45168270122'
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/ch3xp-game
+
+    - name: Package and verify the offline APK
+      if: inputs.ch3xp_source_ref != ''
+      run: |
+        bash ci/package-ch3xp.sh app/build/outputs/apk/standard/release/Bannerlator-CH3XP-V2-standard.apk
+
+    - name: Upload the offline CH3XP APK
+      if: inputs.ch3xp_source_ref != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: Chivalrous_Heroes_XP_V2
+        path: |
+          ${{ runner.temp }}/Chivalrous_Heroes_XP_V2.apk
+          ${{ runner.temp }}/Chivalrous_Heroes_XP_V2.apk.sha256
+        compression-level: 0
+        if-no-files-found: error
+        retention-days: 14
+
     - name: Upload ${{ matrix.flavor.id }} APK artifact
+      if: inputs.ch3xp_source_ref == ''
       uses: actions/upload-artifact@v4
       with:
         name: Bannerlator-${{ inputs.release_number }}-${{ matrix.flavor.id }}

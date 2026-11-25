@@ -1,0 +1,42 @@
+{
+  "id": 1,
+  "name": "CH3XP Touch Controls",
+  "cursorSpeed": 1.0,
+  "disableMouseInput": false,
+  "hideMouseCursor": false,
+  "elements": [
+    {
+      "type": "D_PAD",
+      "shape": "CIRCLE",
+      "bindings": ["KEY_UP", "KEY_RIGHT", "KEY_DOWN", "KEY_LEFT"],
+      "scale": 1.1,
+      "x": 0.135,
+      "y": 0.76,
+      "toggleSwitch": false,
+      "text": "",
+      "iconId": 0
+    },
+    {
+      "type": "BUTTON",
+      "shape": "CIRCLE",
+      "bindings": ["KEY_SPACE"],
+      "scale": 1.0,
+      "x": 0.915,
+      "y": 0.73,
+      "toggleSwitch": false,
+      "text": "A",
+      "iconId": 0
+    },
+    {
+      "type": "BUTTON",
+      "shape": "CIRCLE",
+      "bindings": ["KEY_TAB"],
+      "scale": 1.0,
+      "x": 0.83,
+      "y": 0.83,
+      "toggleSwitch": false,
+      "text": "B",
+      "iconId": 0
+    }
+  ]
+}
