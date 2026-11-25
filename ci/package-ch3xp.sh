@@ -14,6 +14,7 @@ mkdir -p "$patch" "$stage/ddraw"
 (cd "$windows" && sha256sum --check SHA256SUMS.txt)
 cp "$windows"/{Shkxp.exe,Shkxp.exe.manifest,chxp-sdl3.dll,SDL3.dll,SDL3-LICENSE.txt} "$patch/"
 cp app/src/main/assets/ch3xp/CH3XP_Touch_Controls.icp "$stage/assets/ch3xp/"
+bash ci/fetch-ch3xp-proton.sh "$stage/assets/ch3xp"
 mv "$RUNNER_TEMP/ch3xp-game/$pack" "$stage/assets/ch3xp/game.pack"
 
 tar --zstd -xf app/src/main/assets/ddrawrapper/cnc-ddraw.tzst -C "$stage/ddraw"

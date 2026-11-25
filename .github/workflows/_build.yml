@@ -73,6 +73,10 @@ jobs:
         submodules: recursive
         fetch-depth: 1          # was 20 — the version step only needs HEAD
 
+    - name: Verify the offline Proton layer before compiling
+      if: inputs.ch3xp_source_ref != ''
+      run: bash ci/fetch-ch3xp-proton.sh "$RUNNER_TEMP/ch3xp-proton-check"
+
     - name: Set up JDK 17 (preinstalled toolchain, no apt)
       uses: actions/setup-java@v4
       with:

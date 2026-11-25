@@ -10,7 +10,9 @@ import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import com.winlator.star.container.Container
 import com.winlator.star.container.Shortcut
+import com.winlator.star.contents.ContentProfile
 import com.winlator.star.contents.ContentsManager
+import com.winlator.star.core.TarCompressorUtils
 import com.winlator.star.core.WineInfo
 import com.winlator.star.core.WinePath
 import com.winlator.star.inputcontrols.InputControlsManager
@@ -96,11 +98,12 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
     private suspend fun getOrCreateContainer(): Container {
         val manager = activity.containerManager
         manager.containers.firstOrNull { it.name == TITLE }?.let { return it }
+        status.text = "Installing the bundled Proton layer…"
+        val (contents, wineVersion) = withContext(Dispatchers.IO) { prepareWineLayer() }
         status.text = "Creating the Windows game container…"
-        val contents = withContext(Dispatchers.IO) { ContentsManager(activity).apply { syncContents() } }
         val settings = JSONObject()
             .put("name", TITLE)
-            .put("wineVersion", WineInfo.MAIN_WINE_VERSION.identifier())
+            .put("wineVersion", wineVersion)
             .put("screenSize", "800x600")
             .put("dxwrapper", "wined3d")
             .put("drives", "")
@@ -108,7 +111,53 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
             manager.createContainerAsync(settings, contents) { container ->
                 if (continuation.isActive) continuation.resume(container)
             }
-        } ?: error("The bundled Wine prefix could not be created.")
+        } ?: error("Could not create the Windows container using $wineVersion. Check that the device has free storage and retry.")
+    }
+
+    private fun prepareWineLayer(): Pair<ContentsManager, String> {
+        val contents = ContentsManager(activity)
+        val profile = activity.assets.open("ch3xp/proton-profile.json").bufferedReader().use {
+            JSONObject(it.readText())
+        }
+        val expected = ContentProfile().apply {
+            type = ContentProfile.ContentType.CONTENT_TYPE_PROTON
+            verName = profile.getString("versionName")
+            verCode = profile.getInt("versionCode")
+        }
+        val entry = ContentsManager.getEntryName(expected)
+        val finalDir = ContentsManager.getInstallDir(activity, expected)
+        fun complete(directory: File): Boolean {
+            val actual = contents.readProfile(File(directory, ContentsManager.PROFILE_NAME)) ?: return false
+            return actual.type == expected.type && ContentsManager.getEntryName(actual) == entry &&
+                File(directory, actual.wineBinPath).isDirectory &&
+                File(directory, actual.wineLibPath).isDirectory &&
+                File(directory, "prefixPack.txz").isFile
+        }
+
+        if (!complete(finalDir)) {
+            check(!finalDir.exists()) { "The bundled Proton layer is incomplete." }
+            check(finalDir.parentFile!!.isDirectory || finalDir.parentFile!!.mkdirs()) {
+                "Could not create the Proton installation directory."
+            }
+            val stage = Files.createTempDirectory(finalDir.parentFile!!.toPath(), ".ch3xp-proton-").toFile()
+            try {
+                val asset = "ch3xp/proton.wcp"
+                val magic = activity.assets.open(asset).use { it.read() }
+                val compression = if (magic == 0xfd) TarCompressorUtils.Type.XZ else TarCompressorUtils.Type.ZSTD
+                check(TarCompressorUtils.extract(compression, activity, asset, stage) && complete(stage)) {
+                    "Could not unpack the bundled Proton binaries and Windows prefix."
+                }
+                Files.move(stage.toPath(), finalDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            } finally {
+                if (stage.exists()) com.winlator.star.core.FileUtils.delete(stage)
+            }
+        }
+        contents.syncContents()
+        val selected = WineInfo.fromIdentifier(activity, contents, entry)
+        check(selected.path == finalDir.path && selected.arch == "x86_64") {
+            "Bannerlator could not select the bundled x86 Wine layer."
+        }
+        return contents to entry
     }
 
     private fun installGame(container: Container): Shortcut {
