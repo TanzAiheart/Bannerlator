@@ -99,6 +99,20 @@
         android:supportsRtl="true"
         tools:ignore="DataExtractionRules,GoogleAppIndexingWarning">
 
+        <!-- One-tap "Chivalrous Heroes XP" launcher: unpacks the CH3XP game pack zip into a container once,
+             writes the library shortcut, then starts the game on every later tap (Ch3xpImportActivity). -->
+        <activity
+            android:name="com.winlator.star.Ch3xpImportActivity"
+            android:label="Chivalrous Heroes XP"
+            android:theme="@style/AppTheme"
+            android:screenOrientation="sensor"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
         <!-- Main activity -->
         <activity
             android:name="com.winlator.star.MainActivity"
