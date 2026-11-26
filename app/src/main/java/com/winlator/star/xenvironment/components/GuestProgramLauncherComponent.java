@@ -905,6 +905,27 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         // Bring a stale prefix up to date BEFORE the session, X11 and Wayland alike, with Wine Mono's
         // download prompt switched off for that step only (see updatePrefixBeforeSession).
         String wineLauncher = wineInfo.isArm64EC() ? winePath + "/wine" : imageFs.getBinDir() + "/box64 wine";
+        if ("com.ch3xp.banner.v2".equals(BuildConfig.APPLICATION_ID) && !wineInfo.isArm64EC()
+                && overriddenCommand.isEmpty() && guestExecutable.startsWith("wine ")) {
+            File loader = new File(winePath, "wine");
+            File server = new File(winePath, "wineserver");
+            File box = new File(imageFs.getBinDir(), "box64");
+            ProcessHelper.reportDebugLine("Box64: " + box + " executable=" + box.canExecute());
+            ProcessHelper.reportDebugLine("Wine: " + loader + " executable=" + loader.canExecute());
+            ProcessHelper.reportDebugLine("Wineserver: " + server + " executable=" + server.canExecute());
+            File prefix = new File(envVars.get("WINEPREFIX"));
+            ProcessHelper.reportDebugLine("Prefix: " + prefix + " registry=" + new File(prefix, "system.reg").isFile()
+                    + " tempWritable=" + new File(envVars.get("TMPDIR")).canWrite());
+            wineLauncher = box + " " + loader;
+            command = wineLauncher + guestExecutable.substring("wine".length());
+            envVars.put("WINESERVER", server.getAbsolutePath());
+            envVars.put("BOX64_PATH", winePath);
+            ProcessHelper.reportDebugLine("Checking Box64 and Wine with --version");
+            int probeStatus = ProcessHelper.execAndWait(wineLauncher + " --version", envVars.toStringArray(),
+                    rootDir, 8_000);
+            ProcessHelper.reportDebugLine("Wine --version exit code: " + probeStatus);
+            ProcessHelper.reportDebugLine("Windows command: " + command);
+        }
         updatePrefixBeforeSession(envVars, wineLauncher, rootDir, imageFs);
 
         return ProcessHelper.exec(command, envVars.toStringArray(), rootDir, (status) -> {
@@ -1000,6 +1021,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                     + (waylandMode ? "Wayland" : "X11") + " session, WINEDLLOVERRIDES=" + overrides);
             long t0 = System.currentTimeMillis();
             int status = ProcessHelper.execAndWait(wineLauncher + " wineboot -h", env.toStringArray(), rootDir, 180_000);
+            if ("com.ch3xp.banner.v2".equals(BuildConfig.APPLICATION_ID))
+                ProcessHelper.reportDebugLine("Wine prefix update exit code: " + status);
             // Let the wineserver wind down on its own (it flushes the registry on exit).
             long deadline = System.currentTimeMillis() + 30_000;
             while (!ProcessHelper.listRunningWineProcesses().isEmpty() && System.currentTimeMillis() < deadline) {

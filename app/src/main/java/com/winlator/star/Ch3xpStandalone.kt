@@ -1,5 +1,9 @@
 package com.winlator.star
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -26,6 +30,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlin.coroutines.resume
@@ -44,9 +49,32 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
             addView(status.apply { gravity = Gravity.CENTER; textSize = 18f })
             addView(progress)
             addView(play.apply { isAllCaps = false; setOnClickListener { prepareAndLaunch() } })
+            addView(Button(activity).apply {
+                isAllCaps = false
+                text = "Copy launch report"
+                setOnClickListener { copyLaunchReport() }
+            })
         }
         activity.setContentView(page)
         prepareAndLaunch()
+    }
+
+    private fun copyLaunchReport() {
+        val log = File(activity.filesDir, "ch3xp-last-launch.txt")
+        val report = runCatching {
+            RandomAccessFile(log, "r").use { input ->
+                val size = minOf(input.length(), 24_000L).toInt()
+                input.seek(input.length() - size)
+                ByteArray(size).also { input.readFully(it) }.toString(Charsets.UTF_8)
+            }
+        }.getOrDefault("")
+        if (report.isBlank()) {
+            Toast.makeText(activity, "No Windows launch report yet.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("CH3XP launch report", report))
+        Toast.makeText(activity, "Launch report copied", Toast.LENGTH_SHORT).show()
     }
 
     private fun prepareAndLaunch() {

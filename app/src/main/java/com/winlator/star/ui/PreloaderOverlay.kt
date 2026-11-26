@@ -709,7 +709,9 @@ private fun FailureCard(failure: Failure?) {
                 }
             } else {
                 Text(
-                    text = "Enable logging in Settings → Logs and relaunch to capture the cause.",
+                    text = if (com.winlator.star.BuildConfig.APPLICATION_ID == "com.ch3xp.banner.v2")
+                        "Return to the launcher and tap Copy launch report."
+                    else "Enable logging in Settings → Logs and relaunch to capture the cause.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

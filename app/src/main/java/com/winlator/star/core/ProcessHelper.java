@@ -249,6 +249,7 @@ public abstract class ProcessHelper {
         }
         catch (Exception e) {
             Log.e("ProcessHelper", "Error executing command: " + command, e);
+            reportDebugLine("Process start failed: " + e);
         }
         return pid;
     }
@@ -259,11 +260,7 @@ public abstract class ProcessHelper {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (PRINT_DEBUG) System.out.println(line);
-                    synchronized (debugCallbacks) {
-                        if (!debugCallbacks.isEmpty()) {
-                            for (Callback<String> callback : debugCallbacks) callback.call(line);
-                        }
-                    }
+                    reportDebugLine(line);
                 }
             }
             catch (IOException e) {
@@ -285,6 +282,12 @@ public abstract class ProcessHelper {
                 }
             }
         });
+    }
+
+    public static void reportDebugLine(String line) {
+        synchronized (debugCallbacks) {
+            for (Callback<String> callback : debugCallbacks) callback.call(line);
+        }
     }
 
     public static void removeAllDebugCallbacks() {
