@@ -79,6 +79,7 @@ def digest(stream):
 payload = Path(sys.argv[2])
 with ZipFile(sys.argv[1]) as apk:
     assert "assets/imagefs.tar.zst" in apk.namelist()
+    assert apk.getinfo("assets/box64/box64-0.4.5-gst.tzst").file_size > 0
     assert any(n.startswith("lib/arm64-v8a/") for n in apk.namelist())
     assert apk.getinfo("assets/ch3xp/game.pack").compress_type == ZIP_STORED
     for path in payload.rglob("*"):

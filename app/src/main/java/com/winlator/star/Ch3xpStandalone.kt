@@ -97,13 +97,20 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
 
     private suspend fun getOrCreateContainer(): Container {
         val manager = activity.containerManager
-        manager.containers.firstOrNull { it.name == TITLE }?.let { return it }
+        manager.containers.firstOrNull { it.name == TITLE }?.let { container ->
+            if (container.box64Version.isNullOrBlank()) {
+                container.box64Version = BUNDLED_BOX64
+                container.saveData()
+            }
+            return container
+        }
         status.text = "Installing the bundled Proton layer…"
         val (contents, wineVersion) = withContext(Dispatchers.IO) { prepareWineLayer() }
         status.text = "Creating the Windows game container…"
         val settings = JSONObject()
             .put("name", TITLE)
             .put("wineVersion", wineVersion)
+            .put("box64Version", BUNDLED_BOX64)
             .put("screenSize", "800x600")
             .put("dxwrapper", "wined3d")
             .put("drives", "")
@@ -215,6 +222,7 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
 
     private companion object {
         const val TITLE = "Chivalrous Heroes XP"
+        const val BUNDLED_BOX64 = "0.4.5-gst"
         const val TOUCH_PROFILE = "CH3XP Touch Controls"
         val OVERRIDES = listOf("Shkxp.exe", "Shkxp.exe.manifest", "chxp-sdl3.dll", "SDL3.dll",
             "SDL3-LICENSE.txt", "ddraw.dll", "ddraw.ini")
