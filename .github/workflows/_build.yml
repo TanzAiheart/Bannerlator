@@ -843,7 +843,7 @@ jobs:
       run: |
         set -euo pipefail
         test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PRIVATE
-        gh release create "ch3xp-v2-preview5-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+        gh release create "ch3xp-v2-preview6-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
           "$RUNNER_TEMP/Chivalrous_Heroes_XP_V2.apk" --repo "$GITHUB_REPOSITORY" \
-          --target "$GITHUB_SHA" --draft --title "CH3XP V2 Preview 5 — import game files" \
-          --notes "Android APK with local game ZIP import. Existing Preview 4 game files are reused when updating."
+          --target "$GITHUB_SHA" --draft --title "CH3XP V2 Preview 6 — Proton child loaders" \
+          --notes "Restores the expected Proton child-loader paths. Install over Preview 5 to keep your imported game files."

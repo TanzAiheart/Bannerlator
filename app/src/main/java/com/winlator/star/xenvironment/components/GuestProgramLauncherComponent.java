@@ -913,6 +913,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             ProcessHelper.reportDebugLine("Box64: " + box + " executable=" + box.canExecute());
             ProcessHelper.reportDebugLine("Wine: " + loader + " executable=" + loader.canExecute());
             ProcessHelper.reportDebugLine("Wineserver: " + server + " executable=" + server.canExecute());
+            File childLoaders = new File(imageFs.getWinePath(), "lib/wine/i386-unix");
+            ProcessHelper.reportDebugLine("Proton child loaders: wine64="
+                    + new File(childLoaders, "wine64").canExecute() + " wine64-preloader="
+                    + new File(childLoaders, "wine64-preloader").canExecute());
             File prefix = new File(envVars.get("WINEPREFIX"));
             ProcessHelper.reportDebugLine("Prefix: " + prefix + " registry=" + new File(prefix, "system.reg").isFile()
                     + " tempWritable=" + new File(envVars.get("TMPDIR")).canWrite());

@@ -34,6 +34,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import kotlin.coroutines.resume
 
@@ -157,6 +159,8 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
 
     private suspend fun getOrCreateContainer(): Container {
         val manager = activity.containerManager
+        status.text = "Preparing the bundled Proton layer…"
+        val (contents, wineVersion) = withContext(Dispatchers.IO) { prepareWineLayer() }
         manager.containers.firstOrNull { it.name == TITLE }?.let { container ->
             if (container.box64Version.isNullOrBlank()) {
                 container.box64Version = BUNDLED_BOX64
@@ -164,8 +168,6 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
             }
             return container
         }
-        status.text = "Installing the bundled Proton layer…"
-        val (contents, wineVersion) = withContext(Dispatchers.IO) { prepareWineLayer() }
         status.text = "Creating the Windows game container…"
         val settings = JSONObject()
             .put("name", TITLE)
@@ -219,12 +221,32 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
                 if (stage.exists()) com.winlator.star.core.FileUtils.delete(stage)
             }
         }
+        repairProtonChildLoaders(finalDir)
         contents.syncContents()
         val selected = WineInfo.fromIdentifier(activity, contents, entry)
         check(selected.path == finalDir.path && selected.arch == "x86_64") {
             "Bannerlator could not select the bundled x86 Wine layer."
         }
         return contents to entry
+    }
+
+    private fun repairProtonChildLoaders(layer: File) {
+        // This x86_64-only Proton build still looks for these two AMD64 child
+        // loaders in i386-unix. Point those names at the shipped binaries.
+        val wineLib = File(layer, "lib/wine")
+        val childDir = File(wineLib, "i386-unix")
+        Files.createDirectories(childDir.toPath())
+        for (name in listOf("wine64", "wine64-preloader")) {
+            val alias = File(childDir, name).toPath()
+            val loader = File(wineLib, "x86_64-unix/$name").toPath()
+            check(Files.isRegularFile(loader) && Files.isExecutable(loader)) {
+                "The bundled Proton layer is missing executable $name."
+            }
+            if (!Files.exists(alias, NOFOLLOW_LINKS)) {
+                Files.createSymbolicLink(alias, Paths.get("../x86_64-unix", name))
+            }
+            check(Files.isExecutable(alias)) { "Could not initialise Proton's child loader $name." }
+        }
     }
 
     private fun installGame(container: Container, importUri: Uri?): Shortcut {
