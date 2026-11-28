@@ -856,13 +856,6 @@ jobs:
         path: _ch3xp-vanilla
         sparse-checkout: Win7 v1.6 SDL3 controller
         persist-credentials: false
-    - name: Download the verified Vanilla game ZIP
-      uses: actions/download-artifact@v4
-      with:
-        name: CH3XP-vanilla-bee4d1f24fc6
-        run-id: '45168270122'
-        github-token: ${{ github.token }}
-        path: ${{ runner.temp }}/ch3xp-game
     - name: Ensure signing tools are available
       run: |
         if [[ ! -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" ]]; then

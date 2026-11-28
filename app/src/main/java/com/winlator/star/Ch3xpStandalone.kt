@@ -3,6 +3,7 @@ package com.winlator.star
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import android.view.Gravity
 import android.view.View
@@ -11,6 +12,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.winlator.star.container.Container
 import com.winlator.star.container.Shortcut
@@ -39,6 +41,10 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
     private val status = TextView(activity)
     private val progress = ProgressBar(activity)
     private val play = Button(activity)
+    private val importGame = Button(activity)
+    private val pickZip = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) prepare(uri)
+    }
 
     fun show() {
         val page = LinearLayout(activity).apply {
@@ -47,61 +53,87 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
             val padding = (24 * resources.displayMetrics.density).toInt()
             setPadding(padding, padding, padding, padding)
             addView(status.apply { gravity = Gravity.CENTER; textSize = 18f })
-            addView(progress)
-            addView(play.apply { isAllCaps = false; setOnClickListener { prepareAndLaunch() } })
+            addView(progress.apply { visibility = View.GONE })
+            addView(importGame.apply {
+                isAllCaps = false
+                text = "Import game ZIP"
+                setOnClickListener { pickZip.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }
+            })
+            addView(play.apply {
+                isAllCaps = false
+                text = "Play Chivalrous Heroes XP"
+                setOnClickListener { prepare(null) }
+            })
             addView(Button(activity).apply {
                 isAllCaps = false
                 text = "Copy launch report"
-                setOnClickListener { copyLaunchReport() }
+                setOnClickListener { copyLaunchReport(activity) }
             })
         }
         activity.setContentView(page)
-        prepareAndLaunch()
+        updateLauncher()
     }
 
-    private fun copyLaunchReport() {
-        val log = File(activity.filesDir, "ch3xp-last-launch.txt")
-        val report = runCatching {
-            RandomAccessFile(log, "r").use { input ->
-                val size = minOf(input.length(), 24_000L).toInt()
-                input.seek(input.length() - size)
-                ByteArray(size).also { input.readFully(it) }.toString(Charsets.UTF_8)
-            }
-        }.getOrDefault("")
-        if (report.isBlank()) {
-            Toast.makeText(activity, "No Windows launch report yet.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("CH3XP launch report", report))
-        Toast.makeText(activity, "Launch report copied", Toast.LENGTH_SHORT).show()
+    private fun updateLauncher() {
+        val container = activity.containerManager.containers.firstOrNull { it.name == TITLE }
+        val installed = container != null && File(container.rootDir, ".wine/drive_c/CH3XP/Shkxp.exe").isFile
+        play.isEnabled = installed
+        importGame.isEnabled = !installed
+        status.text = if (installed) TITLE else "Select your Chivalrous Heroes XP game ZIP."
     }
 
-    private fun prepareAndLaunch() {
+    private fun prepare(importUri: Uri?) {
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         play.isEnabled = false
-        play.text = "Play Chivalrous Heroes XP"
+        importGame.isEnabled = false
         progress.visibility = View.VISIBLE
         status.text = TITLE
         activity.lifecycleScope.launch {
+            var result: String? = null
             try {
                 installRuntime()
                 val container = getOrCreateContainer()
-                status.text = "Preparing Chivalrous Heroes XP…"
-                val shortcut = withContext(Dispatchers.IO) { installGame(container) }
-                status.text = TITLE
-                launchShortcutNow(activity, shortcut)
+                status.text = if (importUri == null) "Preparing Chivalrous Heroes XP…" else "Importing game files…"
+                val shortcut = withContext(Dispatchers.IO) { installGame(container, importUri) }
+                if (importUri == null) launchShortcutNow(activity, shortcut)
+                else result = "Game files imported. Tap Play to start."
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                android.util.Log.e("CH3XP", "Could not start the game", error)
-                status.text = error.message ?: "Could not start Chivalrous Heroes XP."
-                play.text = "Retry"
+                android.util.Log.e("CH3XP", "Could not prepare the game", error)
+                result = error.message ?: "Could not prepare Chivalrous Heroes XP."
             } finally {
                 activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 progress.visibility = View.GONE
-                play.isEnabled = true
+                updateLauncher()
+                result?.let { status.text = it }
             }
+        }
+    }
+
+    companion object {
+        private const val TITLE = "Chivalrous Heroes XP"
+        private const val BUNDLED_BOX64 = "0.4.5-gst"
+        private const val TOUCH_PROFILE = "CH3XP Touch Controls"
+        private val OVERRIDES = listOf("Shkxp.exe", "Shkxp.exe.manifest", "chxp-sdl3.dll", "SDL3.dll",
+            "SDL3-LICENSE.txt", "ddraw.dll", "ddraw.ini")
+
+        fun copyLaunchReport(context: Context) {
+            val log = File(context.filesDir, "ch3xp-last-launch.txt")
+            val report = runCatching {
+                RandomAccessFile(log, "r").use { input ->
+                    val size = minOf(input.length(), 24_000L).toInt()
+                    input.seek(input.length() - size)
+                    ByteArray(size).also { input.readFully(it) }.toString(Charsets.UTF_8)
+                }
+            }.getOrDefault("")
+            if (report.isBlank()) {
+                Toast.makeText(context, "No Windows launch report yet.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("CH3XP launch report", report))
+            Toast.makeText(context, "Launch report copied", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -195,22 +227,27 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
         return contents to entry
     }
 
-    private fun installGame(container: Container): Shortcut {
+    private fun installGame(container: Container, importUri: Uri?): Shortcut {
         val driveC = File(container.rootDir, ".wine/drive_c")
         val game = File(driveC, "CH3XP")
         val executable = File(game, "Shkxp.exe")
         if (!game.exists()) {
+            checkNotNull(importUri) { "Import your game ZIP before starting the game." }
             val staging = File(driveC, ".ch3xp-install")
             if (staging.exists()) check(staging.deleteRecursively()) { "Could not clear the interrupted setup." }
             check(staging.mkdir()) { "Could not open the game installation folder." }
             try {
-                activity.assets.open("ch3xp/game.pack").use { Ch3xpPack.unpack(it, staging) }
+                val input = activity.contentResolver.openInputStream(importUri)
+                    ?: error("Could not open the selected ZIP.")
+                val imported = input.use { Ch3xpPack.unpack(it, staging) }
                 for (name in OVERRIDES) {
+                    imported.listFiles()?.firstOrNull { it.name != name && it.name.equals(name, ignoreCase = true) }
+                        ?.let { check(it.delete()) { "Could not replace ${it.name}." } }
                     activity.assets.open("ch3xp/patch/$name").use { input ->
-                        File(staging, name).outputStream().use { output -> input.copyTo(output) }
+                        File(imported, name).outputStream().use { output -> input.copyTo(output) }
                     }
                 }
-                Files.move(staging.toPath(), game.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                Files.move(imported.toPath(), game.toPath(), StandardCopyOption.ATOMIC_MOVE)
             } finally {
                 if (staging.exists()) staging.deleteRecursively()
             }
@@ -248,11 +285,4 @@ internal class Ch3xpStandalone(private val activity: MainActivity) {
         return Shortcut(container, desktop)
     }
 
-    private companion object {
-        const val TITLE = "Chivalrous Heroes XP"
-        const val BUNDLED_BOX64 = "0.4.5-gst"
-        const val TOUCH_PROFILE = "CH3XP Touch Controls"
-        val OVERRIDES = listOf("Shkxp.exe", "Shkxp.exe.manifest", "chxp-sdl3.dll", "SDL3.dll",
-            "SDL3-LICENSE.txt", "ddraw.dll", "ddraw.ini")
-    }
 }

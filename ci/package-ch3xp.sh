@@ -2,7 +2,6 @@
 set -euo pipefail
 
 apk=${1:?signed Bannerlator APK required}
-pack=CH3XP-vanilla-bee4d1f24fc6.zip
 sdk="$ANDROID_SDK_ROOT/build-tools/35.0.0"
 output="$RUNNER_TEMP/Chivalrous_Heroes_XP_V2.apk"
 stage="$RUNNER_TEMP/ch3xp-package"
@@ -10,12 +9,10 @@ patch="$stage/assets/ch3xp/patch"
 windows="_ch3xp-vanilla/Win7 v1.6 SDL3 controller"
 mkdir -p "$patch" "$stage/ddraw"
 
-(cd "$RUNNER_TEMP/ch3xp-game" && sha256sum --check "$pack.sha256")
 (cd "$windows" && sha256sum --check SHA256SUMS.txt)
 cp "$windows"/{Shkxp.exe,Shkxp.exe.manifest,chxp-sdl3.dll,SDL3.dll,SDL3-LICENSE.txt} "$patch/"
 cp app/src/main/assets/ch3xp/CH3XP_Touch_Controls.icp "$stage/assets/ch3xp/"
 bash ci/fetch-ch3xp-proton.sh "$stage/assets/ch3xp"
-mv "$RUNNER_TEMP/ch3xp-game/$pack" "$stage/assets/ch3xp/game.pack"
 
 tar --zstd -xf app/src/main/assets/ddrawrapper/cnc-ddraw.tzst -C "$stage/ddraw"
 mapfile -d '' wrappers < <(find "$stage/ddraw" -type f -iname ddraw.dll -print0)
@@ -32,20 +29,7 @@ fi
 cp "${usable[0]}" "$patch/ddraw.dll"
 printf '%s\n' '[ddraw]' 'renderer=gdi' 'fullscreen=false' 'windowed=true' > "$patch/ddraw.ini"
 
-python3 - "$stage/assets/ch3xp/game.pack" <<'PY'
-import json
-import sys
-from zipfile import ZipFile
-
-with ZipFile(sys.argv[1]) as pack:
-    manifest = json.loads(pack.read("manifest.json"))
-    names = {name.casefold() for name in pack.namelist()}
-    assert len(names) == len(pack.namelist()), "Duplicate archive names"
-    assert {"shkxp.exe", "sh3diskidx.dat", "sh3diskimg.dat", "data/shkintro.sh3"} <= names
-    assert all(entry["size"] == pack.getinfo(name).file_size for name, entry in manifest["files"].items())
-PY
-
-# Append the precompressed game archive, then realign the APK and sign it anew.
+# Append the runtime assets and Windows patch, then align and sign the APK.
 cp "$apk" "$stage/unaligned.apk"
 mapfile -t signatures < <(unzip -Z1 "$apk" | grep -E '^META-INF/([^/]+\.(RSA|DSA|EC|SF)|MANIFEST\.MF)$' || true)
 if (( ${#signatures[@]} > 0 )); then
@@ -67,7 +51,7 @@ python3 - "$output" "$stage/assets/ch3xp" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
-from zipfile import ZIP_STORED, ZipFile
+from zipfile import ZipFile
 
 def digest(stream):
     sha256 = hashlib.sha256()
@@ -81,13 +65,13 @@ with ZipFile(sys.argv[1]) as apk:
     assert "assets/imagefs.tar.zst" in apk.namelist()
     assert apk.getinfo("assets/box64/box64-0.4.5-gst.tzst").file_size > 0
     assert any(n.startswith("lib/arm64-v8a/") for n in apk.namelist())
-    assert apk.getinfo("assets/ch3xp/game.pack").compress_type == ZIP_STORED
+    assert "assets/ch3xp/game.pack" not in apk.namelist()
     for path in payload.rglob("*"):
         if path.is_file():
             entry = "assets/ch3xp/" + path.relative_to(payload).as_posix()
             assert apk.namelist().count(entry) == 1, entry
             assert digest(apk.open(entry)) == digest(path.open("rb")), entry
-    print("Verified embedded game ZIP, pinned Windows EXE/SDL3, GDI wrapper, and touch profile.")
+    print("Verified the runtime-only APK with Proton, the Windows EXE/SDL3, GDI wrapper, and touch profile.")
 PY
 cd "$RUNNER_TEMP"
 sha256sum Chivalrous_Heroes_XP_V2.apk > Chivalrous_Heroes_XP_V2.apk.sha256

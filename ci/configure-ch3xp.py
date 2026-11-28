@@ -12,8 +12,8 @@ def replace(path: str, source: str, replacement: str) -> None:
 replace("app/build.gradle", 'applicationId "com.winlator.banner"', 'applicationId "com.ch3xp.banner.v2"')
 replace("app/build.gradle", 'resValue "string", "app_name", "Bannerlator Bionic"',
         'resValue "string", "app_name", "Chivalrous Heroes XP"')
-replace("app/build.gradle", 'versionName "3.2.2"', 'versionName "2.0.0-preview4"')
-replace("app/build.gradle", "        versionCode 109", "        versionCode 112")
+replace("app/build.gradle", 'versionName "3.2.2"', 'versionName "2.0.0-preview5"')
+replace("app/build.gradle", "        versionCode 109", "        versionCode 113")
 replace(
     "app/src/main/java/com/winlator/star/MainActivity.kt",
     "        val selectedMenuItemId = intent.getIntExtra",
@@ -84,6 +84,5 @@ replace(
                     preloaderDialog.fail(
                             "Launching Windows",
                             "The game exited before rendering",
-                            "exit code " + status + ("com.ch3xp.banner.v2".equals(BuildConfig.APPLICATION_ID)
-                                    ? "\\nUse Copy launch report on the launcher." : ""),''',
+                            "exit code " + status,''',
 )

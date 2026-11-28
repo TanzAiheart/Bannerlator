@@ -17,6 +17,8 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -48,11 +50,11 @@ final class Ch3xpPack {
 
     private Ch3xpPack() {}
 
-    static void unpack(InputStream input, File staging) throws IOException, JSONException {
-        unpack(input, staging, true);
+    static File unpack(InputStream input, File staging) throws IOException, JSONException {
+        return unpack(input, staging, true);
     }
 
-    private static void unpack(InputStream input, File staging, boolean allowWrapper)
+    private static File unpack(InputStream input, File staging, boolean allowWrapper)
             throws IOException, JSONException {
         if (!staging.isDirectory()) throw new IOException("Import staging folder is missing.");
         Map<String, FileRecord> files = new HashMap<>();
@@ -102,12 +104,12 @@ final class Ch3xpPack {
             }
         }
         if (manifest == null) {
-            if (!allowWrapper || !files.containsKey(PACK_FILE)) {
-                throw new IOException("No manifest.json found. Select " + PACK_FILE
-                    + " or its original GitHub download ZIP.");
+            if (allowWrapper && files.containsKey(PACK_FILE)) {
+                unpackWrapper(staging, files);
+                return staging;
             }
-            unpackWrapper(staging, files);
-            return;
+            if (allowWrapper) return plainGameRoot(staging, files.keySet());
+            throw new IOException("The inner game ZIP is missing its manifest.");
         }
         JSONObject expected = manifest.getJSONObject("files");
         Iterator<String> names = expected.keys();
@@ -137,6 +139,36 @@ final class Ch3xpPack {
             if ("data/shkintro.sh3".equalsIgnoreCase(expectedNames.next())) intro = true;
         }
         if (!intro) throw new IOException("Missing the Disc 2 New Game intro in data/.");
+        return staging;
+    }
+
+    private static File plainGameRoot(File staging, Set<String> files) throws IOException {
+        Map<String, String> paths = new HashMap<>();
+        for (String path : files) paths.put(path.toLowerCase(Locale.ROOT), path);
+        List<String> roots = paths.keySet().stream()
+            .filter(path -> path.equals("sh3diskimg.dat") || path.endsWith("/sh3diskimg.dat"))
+            .map(path -> path.substring(0, path.length() - "sh3diskimg.dat".length()))
+            .filter(root -> paths.containsKey(root + "sh3diskidx.dat") && paths.containsKey(root + "data/shkintro.sh3"))
+            .collect(Collectors.toList());
+        if (roots.size() != 1) {
+            throw new IOException("Select a ZIP of one complete game folder, including Sh3DiskImg.dat, Sh3DiskIdx.dat and data/ShkIntro.sh3.");
+        }
+        String root = roots.get(0);
+        File directory = new File(staging, paths.get(root + "sh3diskimg.dat")).getParentFile();
+        for (String name : REQUIRED_FILES) {
+            // The installer supplies its own patched executable.
+            if (name.equals("Shkxp.exe")) continue;
+            String path = paths.get(root + name.toLowerCase(Locale.ROOT));
+            if (path == null) throw new IOException("Missing required game file: " + name);
+            File source = new File(staging, path);
+            if (!source.getName().equals(name) && !source.renameTo(new File(directory, name))) {
+                throw new IOException("Could not prepare game file: " + name);
+            }
+        }
+        if (!new File(staging, paths.get(root + "data/shkintro.sh3")).toPath().startsWith(directory.toPath())) {
+            throw new IOException("The game folder uses inconsistent path casing.");
+        }
+        return directory;
     }
 
     private static void unpackWrapper(File staging, Map<String, FileRecord> files)

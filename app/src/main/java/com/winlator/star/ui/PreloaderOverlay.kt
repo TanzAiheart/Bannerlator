@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +66,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.winlator.star.R
+import com.winlator.star.BuildConfig
+import com.winlator.star.Ch3xpStandalone
 import com.winlator.star.core.Failure
 import com.winlator.star.core.Phase
 import com.winlator.star.core.PreloaderDetails
@@ -88,6 +91,7 @@ private val HeroAccent = Color(0xFF4C8DFF)
 fun PreloaderOverlay() {
     val state by PreloaderState.ui.collectAsState()
     val ui = state ?: return
+    val standaloneFailure = ui.phase == Phase.FAILED && BuildConfig.APPLICATION_ID == "com.ch3xp.banner.v2"
 
     // Centered status/shutdown screen — calm logo + message + slim indeterminate bar.
     if (ui.centered) {
@@ -160,9 +164,10 @@ fun PreloaderOverlay() {
             modifier = insets
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 32.dp),
+                .then(if (standaloneFailure) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(horizontal = 28.dp, vertical = if (standaloneFailure) 12.dp else 32.dp),
         ) {
-            if (ui.title.isNotEmpty()) {
+            if (ui.title.isNotEmpty() && !standaloneFailure) {
                 Text(
                     text = ui.title,
                     style = MaterialTheme.typography.headlineSmall,
@@ -618,6 +623,7 @@ private fun ActionHelpDot(highlighted: Boolean, onClick: () -> Unit) {
 @Composable
 private fun FailureCard(failure: Failure?) {
     failure ?: return
+    val standalone = BuildConfig.APPLICATION_ID == "com.ch3xp.banner.v2"
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(14.dp),
@@ -691,7 +697,7 @@ private fun FailureCard(failure: Failure?) {
                 }
                 Spacer(Modifier.height(10.dp))
             }
-            if (failure.loggingEnabled && !failure.logDir.isNullOrEmpty()) {
+            if (!standalone && failure.loggingEnabled && !failure.logDir.isNullOrEmpty()) {
                 Text(
                     text = "Log saved to ${failure.logDir}",
                     style = MaterialTheme.typography.bodySmall,
@@ -708,17 +714,22 @@ private fun FailureCard(failure: Failure?) {
                     }
                 }
             } else {
-                Text(
-                    text = if (com.winlator.star.BuildConfig.APPLICATION_ID == "com.ch3xp.banner.v2")
-                        "Return to the launcher and tap Copy launch report."
-                    else "Enable logging in Settings → Logs and relaunch to capture the cause.",
+                val context = LocalContext.current
+                if (!standalone) Text(
+                    text = "Enable logging in Settings → Logs and relaunch to capture the cause.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    if (standalone) {
+                        OutlinedButton(onClick = { Ch3xpStandalone.copyLaunchReport(context) }) {
+                            Text("Copy launch report")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
                     Button(onClick = { PreloaderState.close() }) {
-                        Text("Close")
+                        Text(if (standalone) "Return to launcher" else "Close")
                     }
                 }
             }
