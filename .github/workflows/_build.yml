@@ -41,10 +41,6 @@ on:
       GALAXY_PERF_SDK_JAR_B64:
         required: false
 
-permissions:
-  contents: read
-  actions: read
-
 env:
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   # Pinned so the Rust cache keys (bannerin-/blsteam-<rustc>-…) survive runner image updates;
@@ -71,6 +67,7 @@ jobs:
         repository: ${{ inputs.ch3xp_source_ref != '' && 'TanzAiheart/Bannerlator' || github.repository }}
         ref: ${{ inputs.ch3xp_source_ref || github.sha }}
         submodules: recursive
+        persist-credentials: false
         fetch-depth: 1          # was 20 — the version step only needs HEAD
 
     - name: Verify the offline Proton layer before compiling
@@ -807,16 +804,6 @@ jobs:
         mv app/build/outputs/apk/${F}/release/app-${F}-release.apk \
            app/build/outputs/apk/${F}/release/Bannerlator-${N}-${F}.apk
 
-    - name: Retain the compiled CH3XP runtime
-      if: inputs.ch3xp_source_ref != ''
-      uses: actions/upload-artifact@v4
-      with:
-        name: ch3xp-v2-compiled-runtime
-        path: app/build/outputs/apk/standard/release/Bannerlator-CH3XP-V2-standard.apk
-        compression-level: 0
-        if-no-files-found: error
-        retention-days: 3
-
     - name: Upload ${{ matrix.flavor.id }} APK artifact
       if: inputs.ch3xp_source_ref == ''
       uses: actions/upload-artifact@v4
@@ -826,29 +813,8 @@ jobs:
         if-no-files-found: error
         retention-days: 7
 
-  package-ch3xp:
-    if: inputs.ch3xp_source_ref != '' && github.repository == 'TanzAiheart/Chivalrous-Heroes-XP'
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-    - name: Fetch the packaging recipe
-      uses: actions/checkout@v4
-      with:
-        repository: TanzAiheart/Bannerlator
-        ref: ${{ inputs.ch3xp_source_ref }}
-        sparse-checkout: |
-          ci
-          keystore
-          app/src/main/assets/ch3xp
-          app/src/main/assets/ddrawrapper
-        persist-credentials: false
-    - name: Download the compiled runtime
-      uses: actions/download-artifact@v4
-      with:
-        name: ch3xp-v2-compiled-runtime
-        path: ${{ runner.temp }}/ch3xp-runtime
     - name: Fetch the pinned Vanilla EXE and SDL3
+      if: inputs.ch3xp_source_ref != ''
       uses: actions/checkout@v4
       with:
         repository: TanzAiheart/Chivalrous-Heroes-XP
@@ -857,18 +823,27 @@ jobs:
         sparse-checkout: Win7 v1.6 SDL3 controller
         persist-credentials: false
     - name: Ensure signing tools are available
+      if: inputs.ch3xp_source_ref != ''
       run: |
         if [[ ! -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" ]]; then
           sdkmanager 'build-tools;35.0.0'
         fi
     - name: Package and verify the offline APK
+      if: inputs.ch3xp_source_ref != ''
       run: |
-        bash ci/package-ch3xp.sh "$RUNNER_TEMP/ch3xp-runtime/Bannerlator-CH3XP-V2-standard.apk"
+        apk="$RUNNER_TEMP/Bannerlator-CH3XP-V2-standard.apk"
+        mv app/build/outputs/apk/standard/release/Bannerlator-CH3XP-V2-standard.apk "$apk"
+        rm -rf app/build/intermediates
+        bash ci/package-ch3xp.sh "$apk"
         cat "$RUNNER_TEMP/Chivalrous_Heroes_XP_V2.apk.sha256" >> "$GITHUB_STEP_SUMMARY"
-    - name: Upload the single APK
-      uses: actions/upload-artifact@v7
-      with:
-        path: ${{ runner.temp }}/Chivalrous_Heroes_XP_V2.apk
-        archive: false
-        if-no-files-found: error
-        retention-days: 14
+    - name: Attach the verified APK to a private draft release
+      if: inputs.ch3xp_source_ref != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PRIVATE
+        gh release create "ch3xp-v2-preview5-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+          "$RUNNER_TEMP/Chivalrous_Heroes_XP_V2.apk" --repo "$GITHUB_REPOSITORY" \
+          --target "$GITHUB_SHA" --draft --title "CH3XP V2 Preview 5 — import game files" \
+          --notes "Android APK with local game ZIP import. Existing Preview 4 game files are reused when updating."
